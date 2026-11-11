@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RFID-Scanner</title>
+<style>
+  :root {
+    --bg: #f5f6f4;
+    --surface: #ffffff;
+    --text: #1c2321;
+    --muted: #5d6965;
+    --accent: #0b6e5c;
+    --accent-text: #ffffff;
+    --line: #d5dbd8;
+    --neutral-btn: #e4e8e6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121715;
+      --surface: #1b2220;
+      --text: #e8eeeb;
+      --muted: #9aa8a3;
+      --accent: #3fc3a5;
+      --accent-text: #08201a;
+      --line: #2d3733;
+      --neutral-btn: #2a3330;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 16px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.4;
+  }
+  main { max-width: 560px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin: 4px 0 16px; }
+  .buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    flex: 1 1 auto;
+    font: inherit;
+    font-weight: 600;
+    padding: 14px 16px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--neutral-btn);
+    color: var(--text);
+  }
+  button.primary { background: var(--accent); color: var(--accent-text); flex-basis: 100%; }
+  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  #status {
+    margin: 16px 0 8px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+  }
+  #count { color: var(--muted); font-size: 0.9rem; margin: 0 0 6px; }
+  textarea {
+    width: 100%;
+    height: 45vh;
+    padding: 12px;
+    font: 1rem ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    resize: none;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>RFID-Scanner</h1>
+
+  <div class="buttons">
+    <button id="start" class="primary">Scan starten</button>
+    <button id="copy">Alle kopieren</button>
+    <button id="clear">Liste leeren</button>
+  </div>
+
+  <div id="status" role="status">Bereit. Tippe auf „Scan starten“.</div>
+
+  <p id="count"></p>
+  <textarea id="liste" readonly aria-label="Gelesene Chipnummern"></textarea>
+</main>
+
+<script>
+const statusEl = document.getElementById('status');
+const liste = document.getElementById('liste');
+const countEl = document.getElementById('count');
+let nummern = [];
+
+try {
+  nummern = JSON.parse(localStorage.getItem('nummern') || '[]');
+} catch (e) {
+  nummern = [];
+}
+
+function speichern() {
+  try { localStorage.setItem('nummern', JSON.stringify(nummern)); } catch (e) {}
+}
+
+function anzeigen() {
+  liste.value = nummern.join('\n');
+  liste.scrollTop = liste.scrollHeight;
+  countEl.textContent = nummern.length + (nummern.length === 1 ? ' Nummer' : ' Nummern');
+}
+anzeigen();
+
+document.getElementById('start').onclick = async () => {
+  if (!('NDEFReader' in window)) {
+    statusEl.textContent = 'Web-NFC wird nicht unterstützt. Bitte Chrome auf Android über HTTPS öffnen und NFC einschalten.';
+    return;
+  }
+  try {
+    const reader = new NDEFReader();
+    await reader.scan();
+    statusEl.textContent = 'Scan läuft. Halte einen Chip an die Rückseite des Handys.';
+    reader.onreadingerror = () => {
+      statusEl.textContent = 'Chip konnte nicht gelesen werden. Bitte noch einmal versuchen.';
+    };
+    reader.onreading = (event) => {
+      const nr = event.serialNumber;
+      nummern.push(nr);
+      speichern();
+      anzeigen();
+      statusEl.textContent = 'Gelesen: ' + nr;
+      if (navigator.vibrate) navigator.vibrate(100);
+    };
+  } catch (e) {
+    statusEl.textContent = 'Fehler: ' + e;
+  }
+};
+
+document.getElementById('copy').onclick = async () => {
+  if (!liste.value) {
+    statusEl.textContent = 'Die Liste ist leer.';
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(liste.value);
+    statusEl.textContent = 'In die Zwischenablage kopiert.';
+  } catch (e) {
+    liste.removeAttribute('readonly');
+    liste.select();
+    document.execCommand('copy');
+    liste.setAttribute('readonly', '');
+    statusEl.textContent = 'Kopiert.';
+  }
+};
+
+document.getElementById('clear').onclick = () => {
+  if (confirm('Liste wirklich leeren?')) {
+    nummern = [];
+    speichern();
+    anzeigen();
+    statusEl.textContent = 'Liste geleert.';
+  }
+};
+</script>
+</body>
+</html>
